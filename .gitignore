@@ -1,0 +1,22 @@
+# kubeconfig holds cluster-admin credentials — never commit
+.kube/
+*.kubeconfig
+
+# terraform state & vars
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# secrets / private keys (SOPS-encrypted *.sops.yaml stay committable)
+*.key
+*.pem
+*.agekey
+sops-age-key*.txt
+
+# scenario run output
+scenarios/**/results/
+
+# macOS
+.DS_Store

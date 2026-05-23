@@ -1,0 +1,8 @@
+stuart@stuarts-MacBook-Pro Downloads % kubectl get nodes
+NAME             STATUS   ROLES           AGE   VERSION
+lima-trace-lab   Ready    control-plane   22m   v1.35.5+k3s1
+stuart@stuarts-MacBook-Pro Downloads % kubectl get pods -A
+NAMESPACE     NAME                                      READY   STATUS    RESTARTS   AGE
+kube-system   coredns-8db54c48d-58c95                   1/1     Running   0          31m
+kube-system   local-path-provisioner-5d9d9885bc-ggxq6   1/1     Running   0          31m
+kube-system   metrics-server-786d997795-rv7t7           1/1     Running   0          31m

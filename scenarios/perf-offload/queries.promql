@@ -1,0 +1,31 @@
+# queries.promql — metric queries for the offload study.
+# Rename trace_* / minio_* to match your actual exported metric names.
+
+# --- The proof: origin vs peer bytes over the run window (${W} = window seconds) ---
+increase(trace_origin_bytes_total[${W}s])
+increase(trace_peer_bytes_total[${W}s])
+
+# Offload ratio (target: rises toward (N-1)/N as N grows)
+sum(increase(trace_peer_bytes_total[${W}s]))
+  / clamp_min(sum(increase(trace_peer_bytes_total[${W}s]) + increase(trace_origin_bytes_total[${W}s])), 1)
+
+# --- Origin protection ---
+# Egress throughput on the origin (should stay ~flat in treatment as N grows)
+rate(minio_s3_traffic_sent_bytes_total[1m])
+# Concurrent in-flight requests at the origin (should stay bounded ~1 in treatment)
+max_over_time(minio_s3_requests_inflight_total[${W}s])
+
+# --- Latency (per-node fetch time) ---
+histogram_quantile(0.95, sum by (le) (rate(trace_fetch_duration_seconds_bucket[5m])))
+histogram_quantile(0.50, sum by (le) (rate(trace_fetch_duration_seconds_bucket[5m])))
+
+# --- Integrity (must be 0) ---
+increase(trace_chunk_verify_failures_total[${W}s])
+
+# --- Saturation (the moved bottleneck + golden signal) ---
+# Agent CPU (watch SHA-256 verification under pressure)
+sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="trace",pod=~"trace-agent.*"}[1m]))
+# Agent memory working set (watch buffer-vs-stream behaviour on large artifacts)
+container_memory_working_set_bytes{namespace="trace",pod=~"trace-agent.*"}
+# Peer-fabric throughput on agent nodes (find where the network saturates)
+sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|cilium.*"}[1m]))

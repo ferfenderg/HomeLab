@@ -1,0 +1,69 @@
+# stressors.yaml — Chaos Mesh experiments for resource-pressure.
+# Apply individually: kubectl apply -f stressors.yaml then patch/select as needed,
+# or split. All scoped to namespace "trace". Adjust labelSelectors to your pods.
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: trace-cpu-max
+  namespace: trace
+spec:
+  mode: one                       # one pod; use "all" to stress every agent
+  selector:
+    namespaces: [trace]
+    labelSelectors: { app: trace-agent }
+  stressors:
+    cpu:
+      workers: 4                  # ~ saturate the cores the agent can use
+      load: 100
+  duration: "5m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: trace-mem-max
+  namespace: trace
+spec:
+  mode: one
+  selector:
+    namespaces: [trace]
+    labelSelectors: { app: trace-agent }
+  stressors:
+    memory:
+      workers: 2
+      size: "90%"                 # push toward the pod memory limit -> reveals buffer vs stream / OOM path
+  duration: "5m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: trace-disk-latency
+  namespace: trace
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces: [trace]
+    labelSelectors: { app: trace-agent }
+  volumePath: /var/cache/trace     # ADJUST to the agent cache mount
+  path: "/var/cache/trace/**"
+  delay: "50ms"
+  percent: 80
+  duration: "5m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: trace-peer-bandwidth
+  namespace: trace
+spec:
+  action: bandwidth
+  mode: all
+  selector:
+    namespaces: [trace]
+    labelSelectors: { app: trace-agent }
+  bandwidth:
+    rate: "50mbps"                 # squeeze the peer fabric -> find the moved bottleneck
+    limit: 20971520
+    buffer: 10000
+  duration: "5m"

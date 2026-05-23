@@ -1,0 +1,44 @@
+# consumer-job.yaml — one load generator that pulls ARTIFACT via the node-local
+# TRACE agent and reports wall-clock fetch time. The harness stamps ${INDEX},
+# ${ARTIFACT_ID}, ${AGENT_URL}, ${RUN_ID} via envsubst and spreads Jobs across nodes.
+#
+# ADJUST the fetch command to TRACE's real agent fetch endpoint. The agent is
+# expected to verify SHA-256 chunks internally; a non-zero exit = failed/invalid fetch.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: trace-consumer-${RUN_ID}-${INDEX}
+  namespace: trace
+  labels: { scenario: perf-offload, run: "${RUN_ID}" }
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: { scenario: perf-offload, run: "${RUN_ID}" }
+    spec:
+      restartPolicy: Never
+      # Spread consumers across nodes so peer fetch is exercised.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { run: "${RUN_ID}" } }
+      containers:
+        - name: fetch
+          image: curlimages/curl:8.10.1
+          env:
+            - { name: AGENT_URL,   value: "${AGENT_URL}" }      # node-local agent
+            - { name: ARTIFACT_ID, value: "${ARTIFACT_ID}" }
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -e
+              start=$(date +%s.%N)
+              # TODO: replace with TRACE's actual agent fetch call.
+              curl -fsS "$AGENT_URL/v1/artifacts/$ARTIFACT_ID/content" -o /dev/null
+              end=$(date +%s.%N)
+              echo "FETCH_RESULT idx=${INDEX} ok dur=$(echo "$end - $start" | bc)s"
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
