@@ -1,0 +1,50 @@
+# minio-setup-job — create the 'artifacts' bucket and upload one synthetic immutable
+# artifact. The init container (busybox) generates the file; the mc container uploads it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-setup
+  namespace: trace
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: work
+          emptyDir: {}
+      initContainers:
+        - name: gen-artifact
+          image: busybox:1.36
+          env:
+            - { name: ARTIFACT_MB, value: "256" }   # synthetic artifact size in MiB
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eux
+              dd if=/dev/urandom of=/work/test-artifact.bin bs=1M count="$ARTIFACT_MB"
+              sha256sum /work/test-artifact.bin | tee /work/sha256.txt
+          volumeMounts:
+            - { name: work, mountPath: /work }
+      containers:
+        - name: mc
+          image: quay.io/minio/mc:latest
+          env:
+            - name: ROOT_USER
+              valueFrom: { secretKeyRef: { name: minio-creds, key: rootUser } }
+            - name: ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: minio-creds, key: rootPassword } }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eux
+              mc alias set local http://minio:9000 "$ROOT_USER" "$ROOT_PASSWORD"
+              mc mb -p local/artifacts
+              mc cp /work/test-artifact.bin local/artifacts/test-artifact.bin
+              echo "--- uploaded; bucket listing ---"
+              mc ls --recursive local/artifacts/
+              echo "--- recorded sha256 ---"
+              cat /work/sha256.txt
+          volumeMounts:
+            - { name: work, mountPath: /work }
